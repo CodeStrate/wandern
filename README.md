@@ -54,6 +54,19 @@ pip install "wandern[postgresql]"
 ```bash
 uv add wandern --extra postgresql
 ```
+**Using mysql**
+
+**PIP**
+
+```bash
+pip install "wandern[mysql]"
+```
+
+**UV**
+
+```bash
+uv add wandern --extra mysql
+```
 
 ## ⚡️ Quick Start
 
