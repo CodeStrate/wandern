@@ -67,7 +67,7 @@ def parse_params_from_dsn(dsn: str) -> MySQLConnectionParams:
     # Parse query parameters more tightly
     if parsed_dsn.query:
         try:
-            query_params = parse_qs(parsed_dsn.query, strict_parsing=True)
+            query_params = parse_qs(parsed_dsn.query, strict_parsing=True, keep_blank_values=True)
             for key, value_list in query_params.items():
                 # Ensure we have a non-empty list and take the first value
                 if not value_list or not value_list[0]:
@@ -144,11 +144,11 @@ class MySQLProvider(BaseProvider):
     def create_table_migration(self) -> None:
         query = f"""
         CREATE TABLE IF NOT EXISTS {self.config.migration_table} (
-            revision_id TEXT PRIMARY KEY NOT NULL,
-            down_revision_id TEXT,
+            revision_id VARCHAR(255) PRIMARY KEY NOT NULL,
+            down_revision_id VARCHAR(255),
             message TEXT,
             tags TEXT,
-            author TEXT,
+            author VARCHAR(255),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
@@ -201,11 +201,16 @@ class MySQLProvider(BaseProvider):
         """
 
         with self.connect() as connection:
-            cursor = connection.cursor()
-
             if revision.up_sql:
+                cursor = connection.cursor()
                 cursor.execute(revision.up_sql)
+                try:
+                    cursor.fetchall()
+                except:
+                    pass
+                cursor.close()
 
+            cursor = connection.cursor()
             cursor.execute(
                 query,
                 {
@@ -217,8 +222,10 @@ class MySQLProvider(BaseProvider):
                     "created_at": datetime.now(),
                 },
             )
+            rowcount = cursor.rowcount
+            cursor.close()
 
-            return cursor.rowcount
+            return rowcount
 
     def migrate_down(self, revision: Revision) -> int:
         query = f"""
@@ -227,14 +234,21 @@ class MySQLProvider(BaseProvider):
         """
 
         with self.connect() as connection:
-            cursor = connection.cursor()
-
             if revision.down_sql:
+                cursor = connection.cursor()
                 cursor.execute(revision.down_sql)
+                try:
+                    cursor.fetchall()
+                except:
+                    pass
+                cursor.close()
 
+            cursor = connection.cursor()
             cursor.execute(query, {"revision_id": revision.revision_id})
+            rowcount = cursor.rowcount
+            cursor.close()
 
-            return cursor.rowcount
+            return rowcount
 
     def list_migrations(
         self,
