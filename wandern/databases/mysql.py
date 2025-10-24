@@ -129,10 +129,18 @@ class MySQLProvider(BaseProvider):
         self.connection_params: MySQLConnectionParams = {'host': '', 'port': 0}
 
     def connect(self) -> mysql.MySQLConnection:
-
+        """
+        Establish connection to MySQL database.
+        
+        Returns a connection with autocommit enabled to ensure changes are persisted immediately.
+        """
         try:
             params = parse_params_from_dsn(self.config.dsn)
             self.connection_params = validate_parsed_params(params)
+
+            if 'autocommit' not in self.connection_params:
+                self.connection_params['autocommit'] = True
+                
             return mysql.connect(**self.connection_params)
         
         except Exception as exc:
@@ -142,6 +150,11 @@ class MySQLProvider(BaseProvider):
             ) from exc
     
     def create_table_migration(self) -> None:
+        """
+        Create the migrations tracking table.
+        """
+
+        # We use TIMESTAMP(6) as MySQL TIMESTAMP goes upto seconds as compared to SQLITE and Postgres
         query = f"""
         CREATE TABLE IF NOT EXISTS {self.config.migration_table} (
             revision_id VARCHAR(255) PRIMARY KEY NOT NULL,
@@ -149,7 +162,7 @@ class MySQLProvider(BaseProvider):
             message TEXT,
             tags TEXT,
             author VARCHAR(255),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP(6) DEFAULT CURRENT_TIMESTAMP(6) 
         )
         """
 
@@ -204,10 +217,8 @@ class MySQLProvider(BaseProvider):
             if revision.up_sql:
                 cursor = connection.cursor()
                 cursor.execute(revision.up_sql)
-                try:
+                if getattr(cursor, "with_rows", False):
                     cursor.fetchall()
-                except:
-                    pass
                 cursor.close()
 
             cursor = connection.cursor()
@@ -237,10 +248,8 @@ class MySQLProvider(BaseProvider):
             if revision.down_sql:
                 cursor = connection.cursor()
                 cursor.execute(revision.down_sql)
-                try:
+                if getattr(cursor, "with_rows", False):
                     cursor.fetchall()
-                except:
-                    pass
                 cursor.close()
 
             cursor = connection.cursor()
