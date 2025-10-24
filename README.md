@@ -55,6 +55,12 @@ pip install "wandern[postgresql]"
 uv add wandern --extra postgresql
 ```
 **Using mysql**
+##### A note on the DSN format
+Since MySQL doesn't support DSN format out of the box, `Wandern` expects a DSN string in the following format:
+```env
+mysql://user:pass@host:port/database_name?{query_string_parameters}
+```
+query parameters can include, `autocommit`, `use_ssl`, `charset`, etc.
 
 **PIP**
 
@@ -148,7 +154,7 @@ To see all the commands, see [Available commands](#available-commands)
 
 - SQLite
 - PostgreSQL
-- MySQL (coming soon)
+- MySQL
 - MSSQL (coming soon)
 
 ## 🛠️ Available Commands

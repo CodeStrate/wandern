@@ -12,10 +12,12 @@ classifiers = [
 ]
 dependencies = [
     "jinja2>=3.1.6",
+    "mysql-connector-python>=9.4.0",
     "networkx>=3.2.1",
     "pydantic>=2.11.7",
     "questionary>=2.1.0",
     "rich>=13.9.4",
+    "testcontainers[mysql]>=4.12.0",
     "typer>=0.13.0",
 ]
 
@@ -55,6 +57,8 @@ dev-dependencies = ["pytest>=8.3.3", "pytest-asyncio>=0.24.0"]
 dev = ["pre-commit>=4.3.0", "ruff>=0.12.7", "types-networkx>=3.4.2.20250509"]
 test = [
     "psycopg[binary]>=3.2.9",
+    "mysql-connector-python>=9.4.0",
     "pytest-cov>=6.2.1",
     "testcontainers[postgres]>=4.12.0",
+    "testcontainers[mysql]>=4.12.0",
 ]
