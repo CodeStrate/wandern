@@ -5,9 +5,28 @@ from wandern.models import Config, Revision
 
 import mysql.connector as mysql
 from urllib.parse import urlparse, parse_qs
-from typing import Dict, Any
+from typing import TypedDict, NotRequired, Literal
 
-def parse_params_from_dsn(dsn: str) -> Dict[str, Any]: # str key, Any value
+
+class MySQLConnectionParams(TypedDict):
+    """TypedDict for MySQL connection parameters."""
+    host: str
+    port: int
+    user: NotRequired[str]
+    password: NotRequired[str]
+    database: NotRequired[str]
+    autocommit: NotRequired[bool]
+    ssl_disabled: NotRequired[bool]
+    use_pure: NotRequired[bool]
+
+
+# structure for query string params
+BOOLEAN_PARAM_KEYS: set[Literal['autocommit', 'ssl_disabled', 'use_pure']] = {
+    'autocommit', 'ssl_disabled', 'use_pure'
+}
+
+
+def parse_params_from_dsn(dsn: str) -> MySQLConnectionParams:
     """
     Parse connection params for mysql-connector from provided dsn string.
 
@@ -15,75 +34,99 @@ def parse_params_from_dsn(dsn: str) -> Dict[str, Any]: # str key, Any value
         dsn: str = The DSN (Data Source Name) syntax string.
 
     Returns:
-        Dict[str, Any]: A dictionary of parsed params. (eg. host, post, user, password)
+        MySQLConnectionParams: A typed dictionary of parsed params. (eg. host, port, user, password)
     """
     if not dsn.startswith('mysql://'):
         raise ValueError("DSN string must start with mysql://")
     
     try:
         parsed_dsn = urlparse(dsn)
-        # dict to store the params, host and port added as required and default.
+    except ValueError as e:
+        raise ValueError(f"Failed to parse DSN: {e}") from e
+    
+    # Host and port are required
+    if not parsed_dsn.hostname:
+        raise ValueError("Host is required in DSN")
+    if not parsed_dsn.port:
+        raise ValueError("Port is required in DSN")
+    
+    # Build typed params dict with required fields
+    parsed_params: MySQLConnectionParams = {
+        'host': parsed_dsn.hostname,
+        'port': parsed_dsn.port,
+    }
 
-        parsed_params = {
-            'host' : parsed_dsn.hostname or '127.0.0.1',
-            'port' : parsed_dsn.port or 3306,
-        }
+    # Only add these if not None or empty
+    if parsed_dsn.username:
+        parsed_params['user'] = parsed_dsn.username
+    if parsed_dsn.password:
+        parsed_params['password'] = parsed_dsn.password  
+    if parsed_dsn.path and parsed_dsn.path.strip('/'):
+        parsed_params['database'] = parsed_dsn.path.lstrip('/')
 
-        # Only add these if not None or empty
-        if parsed_dsn.username:
-            parsed_params['user'] = parsed_dsn.username
-        if parsed_dsn.password:
-            parsed_params['password'] = parsed_dsn.password  
-        if parsed_dsn.path and parsed_dsn.path.strip('/'):
-            parsed_params['database'] = parsed_dsn.path.lstrip('/')
-
-        # Optionally parse any provided query parameters
-        if parsed_dsn.query:
-            query_params = parse_qs(parsed_dsn.query)
-            for k, v in query_params.items():
-                # the values are lists, we are taking the first value
-                if isinstance(v, list) and len(v) > 0:
-                    parsed_params[k] = v[0]
+    # Parse query parameters more tightly
+    if parsed_dsn.query:
+        try:
+            query_params = parse_qs(parsed_dsn.query, strict_parsing=True)
+            for key, value_list in query_params.items():
+                # Ensure we have a non-empty list and take the first value
+                if not value_list or not value_list[0]:
+                    raise ValueError(f"Empty value for query parameter: {key}")
+                value = value_list[0]
+                
+                # Only allow known parameters to be added to typed dict
+                if key in BOOLEAN_PARAM_KEYS:
+                    # These will be converted to bool in validation
+                    parsed_params[key] = value  # type: ignore
+                elif key in ('user', 'password', 'database'):
+                    # Allow overriding from query params
+                    parsed_params[key] = value  # type: ignore
                 else:
-                    parsed_params[k] = v
-        return parsed_params
+                    # Ignore unknown parameters rather than adding them loosely
+                    pass
+        except ValueError as e:
+            raise ValueError(f"Failed to parse query parameters: {e}") from e
     
-    except SyntaxError:
-        raise
-    except Exception as e:
-        raise Exception(f'Encountered an issue: {e}')
+    return parsed_params
     
-def validate_parsed_params(params_dict: Dict[str, Any]) -> Dict[str, Any]:
+def validate_parsed_params(params_dict: MySQLConnectionParams) -> MySQLConnectionParams:
     """
     Validate if the parsed params are syntactically correct and normalize the parameters.
 
     Args:
-        params_dict: A dictionary of connection parameters.
+        params_dict: A typed dictionary of connection parameters.
     
     Returns:
         Validated and normalized parameters.
     """
 
-    validated_params = params_dict.copy() # non destructive
+    validated_params: MySQLConnectionParams = params_dict.copy()  # type: ignore
 
-    if validated_params['port'] != 3306:
-        try:
-            validated_params['port'] = int(validated_params['port'])
-        except (ValueError, TypeError):
-            raise ValueError(f"Invalid port value : {validated_params['port']}")
+    # Validate and convert port to integer
+    try:
+        validated_params['port'] = int(validated_params['port'])
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"Invalid port value: {validated_params.get('port')}") from e
+    
+    # Validate port range
+    if not (1 <= validated_params['port'] <= 65535):
+        raise ValueError(f"Port must be between 1 and 65535, got: {validated_params['port']}")
         
-    # take common boolean parameters and convert them from str to bool; we can add in more in future.
-    bool_params = ['autocommit', 'ssl_disabled', 'use_pure']
-    for p in bool_params:
-        if p in validated_params:
-            validated_params[p] = validated_params[p] in ('true', '1', 'yes', 'on')
+    # Convert boolean parameters from string to bool using the defined set
+    for param in BOOLEAN_PARAM_KEYS:
+        if param in validated_params:
+            param_value = validated_params[param]  # type: ignore
+            if isinstance(param_value, str):
+                validated_params[param] = param_value.lower() in ('true', '1', 'yes', 'on')  # type: ignore
+            elif not isinstance(param_value, bool):
+                raise ValueError(f"Invalid value for boolean parameter '{param}': {param_value}")
 
     return validated_params
 
 class MySQLProvider(BaseProvider):
     def __init__(self, config: Config):
         self.config = config
-        self.connection_params = {}
+        self.connection_params: MySQLConnectionParams = {'host': '', 'port': 0}
 
     def connect(self) -> mysql.MySQLConnection:
 
