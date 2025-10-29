@@ -126,7 +126,6 @@ def validate_parsed_params(params_dict: MySQLConnectionParams) -> MySQLConnectio
 class MySQLProvider(BaseProvider):
     def __init__(self, config: Config):
         self.config = config
-        self.connection_params: MySQLConnectionParams = {'host': '', 'port': 0}
 
     def connect(self) -> mysql.MySQLConnection:
         """
@@ -136,12 +135,12 @@ class MySQLProvider(BaseProvider):
         """
         try:
             params = parse_params_from_dsn(self.config.dsn)
-            self.connection_params = validate_parsed_params(params)
+            connection_params = validate_parsed_params(params)
 
-            if 'autocommit' not in self.connection_params:
-                self.connection_params['autocommit'] = True
+            if 'autocommit' not in connection_params:
+                connection_params['autocommit'] = True
                 
-            return mysql.connect(**self.connection_params)
+            return mysql.connect(**connection_params)
         
         except Exception as exc:
             raise ConnectError(
