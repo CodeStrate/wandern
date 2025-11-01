@@ -28,7 +28,7 @@ BOOLEAN_PARAM_KEYS: set[Literal['autocommit', 'ssl_disabled', 'use_pure']] = {
 
 def parse_params_from_dsn(dsn: str) -> MySQLConnectionParams:
     """
-    Parse connection params for mysql-connector from provided dsn string.
+    Parse connection params for MySQL from provided DSN string.
 
     Args:
         dsn: str = The DSN (Data Source Name) syntax string.
@@ -40,54 +40,39 @@ def parse_params_from_dsn(dsn: str) -> MySQLConnectionParams:
         raise ValueError("DSN string must start with mysql://")
     
     try:
-        parsed_dsn = urlparse(dsn)
+        parsed = urlparse(dsn)
     except ValueError as e:
         raise ValueError(f"Failed to parse DSN: {e}") from e
     
-    # Host and port are required
-    if not parsed_dsn.hostname:
-        raise ValueError("Host is required in DSN")
-    if not parsed_dsn.port:
-        raise ValueError("Port is required in DSN")
+    if not parsed.hostname or not parsed.port:
+        raise ValueError("Host and port are required in DSN")
     
-    # Build typed params dict with required fields
-    parsed_params: MySQLConnectionParams = {
-        'host': parsed_dsn.hostname,
-        'port': parsed_dsn.port,
-    }
-
-    # Only add these if not None or empty
-    if parsed_dsn.username:
-        parsed_params['user'] = parsed_dsn.username
-    if parsed_dsn.password:
-        parsed_params['password'] = parsed_dsn.password  
-    if parsed_dsn.path and parsed_dsn.path.strip('/'):
-        parsed_params['database'] = parsed_dsn.path.lstrip('/')
-
-    # Parse query parameters more tightly
-    if parsed_dsn.query:
+    # Build base params with required fields
+    params: MySQLConnectionParams = {'host': parsed.hostname, 'port': parsed.port}
+    
+    # Add optional connection params if available.
+    if parsed.username:
+        params['user'] = parsed.username
+    if parsed.password:
+        params['password'] = parsed.password
+    if parsed.path and parsed.path.strip('/'):
+        params['database'] = parsed.path.lstrip('/')
+    
+    # Parse query string parameters
+    if parsed.query:
         try:
-            query_params = parse_qs(parsed_dsn.query, strict_parsing=True, keep_blank_values=True)
-            for key, value_list in query_params.items():
-                # Ensure we have a non-empty list and take the first value
-                if not value_list or not value_list[0]:
+            query_params = parse_qs(parsed.query, strict_parsing=True, keep_blank_values=True)
+            for key, values in query_params.items():
+                if not values or not values[0]:
                     raise ValueError(f"Empty value for query parameter: {key}")
-                value = value_list[0]
                 
-                # Only allow known parameters to be added to typed dict
-                if key in BOOLEAN_PARAM_KEYS:
-                    # These will be converted to bool in validation
-                    parsed_params[key] = value  # type: ignore
-                elif key in ('user', 'password', 'database'):
-                    # Allow overriding from query params
-                    parsed_params[key] = value  # type: ignore
-                else:
-                    # Ignore unknown parameters rather than adding them loosely
-                    pass
+                # Only accept known parameters
+                if key in BOOLEAN_PARAM_KEYS or key in ('user', 'password', 'database'):
+                    params[key] = values[0]  # type: ignore
         except ValueError as e:
             raise ValueError(f"Failed to parse query parameters: {e}") from e
     
-    return parsed_params
+    return params
     
 def validate_parsed_params(params_dict: MySQLConnectionParams) -> MySQLConnectionParams:
     """

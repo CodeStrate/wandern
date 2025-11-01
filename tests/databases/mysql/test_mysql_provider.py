@@ -53,21 +53,16 @@ def test_parse_params_from_dsn_invalid_scheme():
         parse_params_from_dsn(dsn)
 
 
-def test_parse_params_from_dsn_missing_host():
-    """Test parsing DSN without host raises ValueError."""
-    # This is tricky - urlparse might not handle this well
-    # but we check for hostname being None
-    with pytest.raises(ValueError, match="Host is required in DSN"):
-        parse_params_from_dsn("mysql://:3306/testdb")
+def test_parse_params_from_dsn_missing_host_port():
+    """Test parsing DSN without host or port raises ValueError."""
+    dsn_no_port = "mysql://localhost/testdb"
+    dsn_no_host = "mysql://:3306/testdb"
 
-
-def test_parse_params_from_dsn_missing_port():
-    """Test parsing DSN without port raises ValueError."""
-    dsn = "mysql://localhost/testdb"
-
-    with pytest.raises(ValueError, match="Port is required in DSN"):
-        parse_params_from_dsn(dsn)
-
+    with pytest.raises(ValueError, match="Host and port are required in DSN"):
+        parse_params_from_dsn(dsn_no_port)
+    
+    with pytest.raises(ValueError, match="Host and port are required in DSN"):
+        parse_params_from_dsn(dsn_no_host)
 
 def test_parse_params_from_dsn_empty_query_param():
     """Test parsing DSN with empty query parameter value raises ValueError."""
